@@ -18,5 +18,5 @@
 
 카메라 수정, 공 충돌 버그 수정
 
-![Screenshot_18_12_1](.\Screenshots\Screenshot_18_12_1.png)
+![Screenshot_18_12_1](./Screenshots/Screenshot_18_12_1.png)
 
