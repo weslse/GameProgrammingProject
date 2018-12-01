@@ -65,7 +65,7 @@ float4 ps_main(VS_OUTPUT Input) : COLOR
 }
 
 
-technique Transform
+technique Shader
 {
     pass P0
     {

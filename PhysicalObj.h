@@ -12,9 +12,9 @@
 #include "d3dx9.h"
 #include "constants.h"
 
-class PhysicalObj  
+class PhysicalObj
 {
-private:
+public:
 	D3DXVECTOR3 _pos, _vel, _accel;
 	float _clock;
 	float _scale;
@@ -27,8 +27,10 @@ private:
 	const float coef_friction = 0.99f;
 	D3DXVECTOR3 friction;
 
+	D3DXMATRIX _modelMatrix;
+
 public:
-	PhysicalObj(float x=0, float y=0, float z=0);
+	PhysicalObj(float x = 0, float y = 0, float z = 0);
 	void SetPosition(float x, float y, float z);
 	void SetVelocity(float x, float y, float z);
 	void SetAcceleration(float x, float y, float z);
@@ -37,7 +39,8 @@ public:
 	void collide(PhysicalObj& target);
 	void SetBoundingBox(D3DXVECTOR3 m, D3DXVECTOR3 M);
 	void SetBoundingSphere(D3DXVECTOR3 c, float r);
-	D3DXMATRIXA16 GetWorldMatrix();
+	void setModelMatrix(D3DXMATRIX& matWorld);
+	D3DXMATRIX getWorldMatrix();
 	void update(const float& dt);
 	virtual ~PhysicalObj();
 

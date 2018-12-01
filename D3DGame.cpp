@@ -1,11 +1,10 @@
 //
-// 2018.11.29 Thu
+// 2018.12.1 Sat
 // Created by Weslse
 //
-//
 // TODO :
-// 카메라 움직임 수정
 // 당구 큐대 추가
+// Torque 구현
 //
 
 #include <windows.h>
@@ -13,7 +12,11 @@
 #include "XFileUtil.h"
 #include "PhysicalObj.h"
 #include "Camera.h"
+
 //-----------------------------------------------------------------------------
+// Function Prototype
+VOID SetupViewProjection();
+
 // 전역 변수 
 ZCamera*				g_pCamera = NULL;	// Camera 클래스
 LPDIRECT3D9             g_pD3D = NULL; // Direct3D 객체 
@@ -25,13 +28,13 @@ LPDIRECT3DTEXTURE9      g_pTexture = NULL; // 텍스쳐 로딩용 변수
 
 LPD3DXEFFECT			pEffect = NULL;	//이펙트
 
-CXFileUtil				g_XBall1;
-CXFileUtil				g_XBall2;
-CXFileUtil				g_XBall3;
+CXFileUtil				g_XOrangeBall;
+CXFileUtil				g_XWhiteBall;
+CXFileUtil				g_XRedBall;
 
-PhysicalObj				g_PhyBall1;
-PhysicalObj				g_PhyBall2;
-PhysicalObj				g_PhyBall3;
+PhysicalObj				g_PhyOrangeBall;
+PhysicalObj				g_PhyWhiteBall;
+PhysicalObj				g_PhyRedBall;
 
 // 커스텀 버텍스 타입 구조체 
 struct CUSTOMVERTEX
@@ -108,9 +111,9 @@ HRESULT InitD3D(HWND hWnd)
 //-----------------------------------------------------------------------------
 HRESULT InitMeshData()
 {
-	g_XBall1.XFileLoad(g_pd3dDevice, "./images/ball.x");
-	g_XBall2.XFileLoad(g_pd3dDevice, "./images/ball.x");
-	g_XBall3.XFileLoad(g_pd3dDevice, "./images/ball.x");
+	g_XOrangeBall.XFileLoad(g_pd3dDevice, "./images/ball.x");
+	g_XWhiteBall.XFileLoad(g_pd3dDevice, "./images/ball.x");
+	g_XRedBall.XFileLoad(g_pd3dDevice, "./images/ball.x");
 	D3DXVECTOR3 min, max;
 	D3DXVECTOR3 center;
 	float radius;
@@ -118,34 +121,34 @@ HRESULT InitMeshData()
 
 	BYTE* v = 0;
 
-	g_XBall1.GetMesh()->LockVertexBuffer(0, (void**)&v);
+	g_XOrangeBall.GetMesh()->LockVertexBuffer(0, (void**)&v);
 	HRESULT hr = D3DXComputeBoundingBox(
 		(D3DXVECTOR3*)v,
-		g_XBall1.GetMesh()->GetNumVertices(),
-		D3DXGetFVFVertexSize(g_XBall1.GetMesh()->GetFVF()),
+		g_XOrangeBall.GetMesh()->GetNumVertices(),
+		D3DXGetFVFVertexSize(g_XOrangeBall.GetMesh()->GetFVF()),
 		&min,
 		&max);
 	hr = D3DXComputeBoundingSphere(
 		(D3DXVECTOR3*)v,
-		g_XBall1.GetMesh()->GetNumVertices(),
-		D3DXGetFVFVertexSize(g_XBall1.GetMesh()->GetFVF()),
+		g_XOrangeBall.GetMesh()->GetNumVertices(),
+		D3DXGetFVFVertexSize(g_XOrangeBall.GetMesh()->GetFVF()),
 		&center,
 		&radius);
 
-	g_XBall1.GetMesh()->UnlockVertexBuffer();
+	g_XOrangeBall.GetMesh()->UnlockVertexBuffer();
 
-	g_PhyBall1.SetBoundingBox(min, max);
-	g_PhyBall1.SetBoundingSphere(center, radius);
-	g_PhyBall1.SetPosition(100, 0, 100);
+	g_PhyOrangeBall.SetBoundingBox(min, max);
+	g_PhyOrangeBall.SetBoundingSphere(center, radius);
+	g_PhyOrangeBall.SetPosition(100, 0, 100);
 
-	// Ball1과 ball2는 동일하므로 Bounding volume을 새로 계산할 필요는 없음
-	g_PhyBall2.SetBoundingBox(min, max);
-	g_PhyBall2.SetBoundingSphere(center, radius);
-	g_PhyBall2.SetPosition(-100, 0, -100);
+	// OrangeBall과 ball2는 동일하므로 Bounding volume을 새로 계산할 필요는 없음
+	g_PhyWhiteBall.SetBoundingBox(min, max);
+	g_PhyWhiteBall.SetBoundingSphere(center, radius);
+	g_PhyWhiteBall.SetPosition(-100, 0, -100);
 
-	g_PhyBall3.SetBoundingBox(min, max);
-	g_PhyBall3.SetBoundingSphere(center, radius);
-	g_PhyBall3.SetPosition(-50, 0, 70);
+	g_PhyRedBall.SetBoundingBox(min, max);
+	g_PhyRedBall.SetBoundingSphere(center, radius);
+	g_PhyRedBall.SetPosition(-50, 0, 70);
 
 	return S_OK;
 }
@@ -260,7 +263,10 @@ HRESULT InitGeometryTexture()
 	return S_OK;
 }
 
-
+HRESULT InitMatrix() {
+	SetupViewProjection();
+	return S_OK;
+}
 
 //-----------------------------------------------------------------------------
 // 이름: Cleanup()
@@ -288,12 +294,13 @@ VOID Cleanup()
 // 이름: SetupViewProjection()
 // 기능: 뷰 변환과 프로젝션 변환을 설정한다. 
 //-----------------------------------------------------------------------------
-D3DXVECTOR3 vEyePt(0.f, 600.f, 10.f);    // 카메라의 위치 
-D3DXVECTOR3 vLookatPt(0.0f, 0.0f, 0.0f);       // 바라보는 지점 
-D3DXVECTOR3 vUpVec(0.0f, 1.0f, 0.0f);          // 업벡터 설정 
+
 
 VOID SetupViewProjection()
 {
+	D3DXVECTOR3 vEyePt(0.f, 600.f, 10.f);    // 카메라의 위치 
+	D3DXVECTOR3 vLookatPt(0.0f, 0.0f, 0.0f);       // 바라보는 지점 
+	D3DXVECTOR3 vUpVec(0.0f, 1.0f, 0.0f);          // 업벡터 설정 
 	// 뷰 변환 설정 
 	D3DXMatrixLookAtLH(&matView, &vEyePt, &vLookatPt, &vUpVec);
 	// Direct3D 장치에 뷰 매트릭스 전달 
@@ -325,8 +332,7 @@ VOID Render()
 	if (NULL == g_pd3dDevice)  // 장치 객체가 생성되지 않았으면 리턴 
 		return;
 
-	// 뷰 및 프로젝션 변환 설정
-	SetupViewProjection();
+	
 
 	// 삼각형의 앞/뒤 변을 모두 렌더링하도록 컬링 기능을 끈다.
 	g_pd3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
@@ -348,16 +354,20 @@ VOID Render()
 		g_pd3dDevice->SetFVF(D3DFVF_CUSTOMVERTEX); // 버텍스 포멧 지정 
 		D3DXMatrixIdentity(&matWorld);
 
+		g_PhyOrangeBall.setModelMatrix(matWorld);
+		g_PhyWhiteBall.setModelMatrix(matWorld);
+		g_PhyRedBall.setModelMatrix(matWorld);
 
+		
 		pEffect->SetMatrix("gWorldMatrix", &matWorld);
 		pEffect->SetMatrix("gViewMatrix", &matView);
 		pEffect->SetMatrix("gProjectionMatrix", &matProj);
 
 		D3DXVECTOR4 lightPosition(0.f, 500.f, 0.f, 1.f);
-		D3DXVECTOR4 cameraPosition = D3DXVECTOR4(vEyePt, 1.f);
+		D3DXVECTOR4 cameraPosition = D3DXVECTOR4(*g_pCamera->GetEye(), 1.f);
 		pEffect->SetVector("gWorldLightPosition", &lightPosition);
 		pEffect->SetVector("gWorldCameraPosition", &cameraPosition);
-		pEffect->SetTechnique("Transform");
+		pEffect->SetTechnique("Shader");
 
 		//D3DXMATRIXA16 matTransWorld;  // 월드 변환용 매트릭스 선언 
 
@@ -377,56 +387,56 @@ VOID Render()
 		g_pd3dDevice->SetTransform(D3DTS_WORLD, &matWorld);  // 변환 매트릭스 전달 
 		g_pd3dDevice->DrawPrimitive(D3DPT_LINELIST, 4, 1);   // y 축 그리기 
 
-
 		g_pd3dDevice->SetRenderState(D3DRS_LIGHTING, FALSE);
-		// X 파일 출력
+
+		// 공그리기
 
 		// ball1
 		// setting
-		matWorld = g_PhyBall1.GetWorldMatrix();
+		matWorld = g_PhyOrangeBall.getWorldMatrix();
 		g_pd3dDevice->SetTransform(D3DTS_WORLD, &matWorld);
 		pEffect->SetMatrix("gWorldMatrix", &matWorld);
-		auto lightColorBall1 = D3DXVECTOR4(0.7f, 0.4f, 0.0f, 1.0f);
-		pEffect->SetVector("gLightColor", &lightColorBall1);
+		auto lightColorOrangeBall = D3DXVECTOR4(0.7f, 0.4f, 0.0f, 1.0f);
+		pEffect->SetVector("gLightColor", &lightColorOrangeBall);
 		// rendering
 		pEffect->Begin(NULL, NULL);
 		pEffect->BeginPass(0);
 
-		g_XBall1.XFileDisplay(g_pd3dDevice);
+		g_XOrangeBall.XFileDisplay(g_pd3dDevice);
 		
 		pEffect->EndPass();
 		pEffect->End();
 
 		// ball2
 		// setting
-		matWorld = g_PhyBall2.GetWorldMatrix();
+		matWorld = g_PhyWhiteBall.getWorldMatrix();
 		g_pd3dDevice->SetTransform(D3DTS_WORLD, &matWorld);
 		pEffect->SetMatrix("gWorldMatrix", &matWorld);
-		auto lightColorBall2 = D3DXVECTOR4(0.7f, 0.7f, 0.70f, 1.0f);
-		pEffect->SetVector("gLightColor", &lightColorBall2);
+		auto lightColorWhiteBall = D3DXVECTOR4(0.7f, 0.7f, 0.70f, 1.0f);
+		pEffect->SetVector("gLightColor", &lightColorWhiteBall);
 		
 		//rendering
 		pEffect->Begin(NULL, NULL);
 		pEffect->BeginPass(0);
 
-		g_XBall2.XFileDisplay(g_pd3dDevice);
+		g_XWhiteBall.XFileDisplay(g_pd3dDevice);
 
 		pEffect->EndPass();
 		pEffect->End();
 
 		// ball3
 		// setting
-		matWorld = g_PhyBall3.GetWorldMatrix();
+		matWorld = g_PhyRedBall.getWorldMatrix();
 		g_pd3dDevice->SetTransform(D3DTS_WORLD, &matWorld);
 		pEffect->SetMatrix("gWorldMatrix", &matWorld);
-		auto lightColorBall3 = D3DXVECTOR4(1.f, 0.f, 0.0f, 1.0f);
-		pEffect->SetVector("gLightColor", &lightColorBall3);
+		auto lightColorRedBall = D3DXVECTOR4(1.f, 0.f, 0.0f, 1.0f);
+		pEffect->SetVector("gLightColor", &lightColorRedBall);
 		
 		//rendering
 		pEffect->Begin(NULL, NULL);
 		pEffect->BeginPass(0);
 
-		g_XBall3.XFileDisplay(g_pd3dDevice);
+		g_XRedBall.XFileDisplay(g_pd3dDevice);
 
 		pEffect->EndPass();
 		pEffect->End();
@@ -465,44 +475,56 @@ LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-
 void moveCamera(void)
 {
 	// 카메라의 움직임이 좋지 않음
-	if (GetAsyncKeyState(VK_UP)) g_pCamera->MoveLocalZ(1.5f);	// 카메라 전진!
-	if (GetAsyncKeyState(VK_DOWN)) g_pCamera->MoveLocalZ(-1.5f);	// 카메라 후진!
-	if (GetAsyncKeyState(VK_LEFT)) g_pCamera->MoveLocalX(-1.5f);	// 카메라 왼쪽
-	if (GetAsyncKeyState(VK_RIGHT)) g_pCamera->MoveLocalX(1.5f);	// 카메라 오른쪽
+	if (GetAsyncKeyState(VK_UP)) 
+		g_pCamera->MoveLocalZ(1.5f);	// 카메라 전진!
+	if (GetAsyncKeyState(VK_DOWN)) 
+		g_pCamera->MoveLocalZ(-1.5f);	// 카메라 후진!
+	if (GetAsyncKeyState(VK_LEFT)) 
+		g_pCamera->MoveLocalX(-1.5f);	// 카메라 왼쪽
+	if (GetAsyncKeyState(VK_RIGHT)) 
+		g_pCamera->MoveLocalX(1.5f);	// 카메라 오른쪽
 
-	if (GetAsyncKeyState('A')) g_pCamera->RotateLocalZ(-.02f);
-	if (GetAsyncKeyState('D')) g_pCamera->RotateLocalZ(.02f);
-	if (GetAsyncKeyState('W')) g_pCamera->RotateLocalX(-.02f);
-	if (GetAsyncKeyState('S')) g_pCamera->RotateLocalX(.02f);
+	if (GetAsyncKeyState('A')) 
+		g_pCamera->RotateLocalY(-.02f);
+	if (GetAsyncKeyState('D')) 
+		g_pCamera->RotateLocalY(.02f);
+	if (GetAsyncKeyState('W')) 
+		g_pCamera->RotateLocalX(-.02f);
+	if (GetAsyncKeyState('S')) 
+		g_pCamera->RotateLocalX(.02f);
 
-	D3DXMATRIXA16*	pmatView = g_pCamera->GetViewMatrix();		// 카메라 행렬을 얻는다.
-	vEyePt.x = g_pCamera->GetEye()->x;
-	vEyePt.y = g_pCamera->GetEye()->y;
-	vEyePt.z = g_pCamera->GetEye()->z;
-	g_pd3dDevice->SetTransform(D3DTS_VIEW, pmatView);			// 카메라 행렬 셋팅
+	matView = *g_pCamera->GetViewMatrix();		// 카메라 행렬을 얻는다.
+	g_pd3dDevice->SetTransform(D3DTS_VIEW, &matView);			// 카메라 행렬 셋팅
 }
 
 void moveBall() {
-	if (GetAsyncKeyState('M')) g_PhyBall1.AddVelocity(0.0f, 0.5f, 0);
-	if (GetAsyncKeyState('L')) g_PhyBall1.AddVelocity(-0.7f, 0, 0);
-	if (GetAsyncKeyState('J')) g_PhyBall1.AddVelocity(0.7f, 0, 0);
-	if (GetAsyncKeyState('I')) g_PhyBall1.AddVelocity(0, 0, -0.7f);
-	if (GetAsyncKeyState('K')) g_PhyBall1.AddVelocity(0, 0, 0.7f);
+	if (GetAsyncKeyState('M')) 
+		g_PhyOrangeBall.AddVelocity(0.f, 2.f, 0.f);
+	if (GetAsyncKeyState('L')) 
+		g_PhyOrangeBall.AddVelocity(-0.7f, 0.f, 0.f);
+	if (GetAsyncKeyState('J')) 
+		g_PhyOrangeBall.AddVelocity(0.7f, 0.f, 0.f);
+	if (GetAsyncKeyState('I')) 
+		g_PhyOrangeBall.AddVelocity(0.f, 0.f, -0.7f);
+	if (GetAsyncKeyState('K')) 
+		g_PhyOrangeBall.AddVelocity(0.f, 0.f, 0.7f);
 }
 
 void Action()
 {
 	static float dt = 1.f;
-	g_PhyBall1.update(dt);
-	g_PhyBall2.update(dt);
-	g_PhyBall3.update(dt);
-	g_PhyBall1.collide(g_PhyBall2);
-	g_PhyBall1.collide(g_PhyBall3);
-	g_PhyBall2.collide(g_PhyBall3);
+	
+	g_PhyOrangeBall.collide(g_PhyWhiteBall);
+	g_PhyOrangeBall.collide(g_PhyRedBall);
+	g_PhyWhiteBall.collide(g_PhyRedBall);
+
+	g_PhyOrangeBall.update(dt);
+	g_PhyWhiteBall.update(dt);
+	g_PhyRedBall.update(dt);
+
 	moveCamera();
 	moveBall();
 }
@@ -532,7 +554,8 @@ INT WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, INT)
 	if (SUCCEEDED(InitD3D(hWnd)) &&       // Direct3D의 초기화도 성공하고 
 		SUCCEEDED(InitGeometry()) &&         // 버텍스 버퍼 생성도 성공하고
 		SUCCEEDED(InitGeometryTexture()) &&  // 텍스쳐 버텍스 버퍼 생성도 성공하고 
-		SUCCEEDED(InitMeshData()))          // 기타 게임 데이타 로드 
+		SUCCEEDED(InitMeshData()) &&
+		SUCCEEDED(InitMatrix()))          // 기타 게임 데이타 로드 
 	{
 		// 윈도우 출력 
 		ShowWindow(hWnd, SW_SHOWDEFAULT);
